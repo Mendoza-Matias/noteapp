@@ -1,127 +1,219 @@
-// Variables globales para almacenar datos
+// ===========================================
+// CONFIGURACIÓN DE FIREBASE
+// ===========================================
+
+const firebaseConfig = {
+    apiKey: "AIzaSyBsvR13ePYwscMAG1lruFNVKdh3bI0tudM",
+    authDomain: "noteapp-e8a35.firebaseapp.com",
+    projectId: "noteapp-e8a35",
+    storageBucket: "noteapp-e8a35.firebasestorage.app",
+    messagingSenderId: "185584012565",
+    appId: "1:185584012565:web:42eb6d343e7153da092d1c"
+};
+
+// Variables globales
 let tasks = [];
 let notes = [];
 let images = [];
 let teamMembers = [];
+let db = null;
+let isOnline = false;
+let currentUser = null;
 
-// Constantes para las claves del localStorage
-const STORAGE_KEYS = {
-    TASKS: 'evento_especial_tasks',
-    NOTES: 'evento_especial_notes',
-    IMAGES: 'evento_especial_images',
-    TEAM_MEMBERS: 'evento_especial_team_members'
-};
+// ===========================================
+// INICIALIZACIÓN
+// ===========================================
 
-// Funciones para manejo de localStorage
-function saveToLocalStorage(key, data) {
+function initApp() {
+    // Crear usuario
+    currentUser = {
+        id: localStorage.getItem('user_id') || 'user_' + Date.now(),
+        name: localStorage.getItem('user_name') || 'Usuario Anónimo'
+    };
+    localStorage.setItem('user_id', currentUser.id);
+
+    // Intentar conectar Firebase
     try {
-        localStorage.setItem(key, JSON.stringify(data));
+        if (typeof firebase !== 'undefined') {
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.firestore();
+            isOnline = true;
+            setupFirebaseListeners();
+            console.log('🟢 Firebase conectado');
+        } else {
+            throw new Error('Firebase no disponible');
+        }
     } catch (error) {
-        console.error('Error al guardar en localStorage:', error);
-        alert('Error al guardar los datos. El almacenamiento local podría estar lleno.');
+        console.log('🔴 Firebase no disponible, usando localStorage');
+        isOnline = false;
+        loadLocalData();
     }
+
+    updateUI();
+    setupButtons();
 }
 
-function loadFromLocalStorage(key) {
-    try {
-        const data = localStorage.getItem(key);
-        return data ? JSON.parse(data) : [];
-    } catch (error) {
-        console.error('Error al cargar desde localStorage:', error);
-        return [];
-    }
+function setupFirebaseListeners() {
+    // Tareas
+    db.collection('tasks').onSnapshot(snapshot => {
+        tasks = [];
+        snapshot.forEach(doc => tasks.push({id: doc.id, ...doc.data()}));
+        renderTasks();
+    });
+
+    // Notas
+    db.collection('notes').onSnapshot(snapshot => {
+        notes = [];
+        snapshot.forEach(doc => notes.push({id: doc.id, ...doc.data()}));
+        renderNotes();
+    });
+
+    // Equipo
+    db.collection('team').onSnapshot(snapshot => {
+        teamMembers = [];
+        snapshot.forEach(doc => teamMembers.push({id: doc.id, ...doc.data()}));
+        renderTeam();
+    });
+
+    // Imágenes
+    db.collection('images').onSnapshot(snapshot => {
+        images = [];
+        snapshot.forEach(doc => images.push({id: doc.id, ...doc.data()}));
+        renderImages();
+    });
 }
 
-function clearAllLocalStorage() {
-    if (confirm('¿Estás seguro de que quieres eliminar TODOS los datos almacenados? Esta acción no se puede deshacer.')) {
-        Object.values(STORAGE_KEYS).forEach(key => {
-            localStorage.removeItem(key);
-        });
-        initializeData();
-        alert('Todos los datos han sido eliminados y la aplicación ha sido reiniciada.');
-    }
-}
-
-// Función para inicializar los datos desde localStorage
-function initializeData() {
-    tasks = loadFromLocalStorage(STORAGE_KEYS.TASKS);
-    notes = loadFromLocalStorage(STORAGE_KEYS.NOTES);
-    images = loadFromLocalStorage(STORAGE_KEYS.IMAGES);
-    teamMembers = loadFromLocalStorage(STORAGE_KEYS.TEAM_MEMBERS);
-
-    // Si no hay datos, agregar datos de ejemplo
-    if (tasks.length === 0 && notes.length === 0 && teamMembers.length === 0) {
-        loadExampleData();
-    }
-
-    // Renderizar todos los elementos
+function loadLocalData() {
+    tasks = JSON.parse(localStorage.getItem('tasks') || '[]');
+    notes = JSON.parse(localStorage.getItem('notes') || '[]');
+    teamMembers = JSON.parse(localStorage.getItem('team') || '[]');
+    images = JSON.parse(localStorage.getItem('images') || '[]');
+    
     renderTasks();
     renderNotes();
+    renderTeam();
     renderImages();
-    renderTeamMembers();
 }
 
-// Función para cargar datos de ejemplo
-function loadExampleData() {
-    // Tareas de ejemplo
-    tasks = [
-
-    ];
-
-    // Miembros del equipo de ejemplo
-    teamMembers = [
-
-    ];
-
-    // Nota de ejemplo
-    notes = [
-
-    ];
-
-    // Guardar datos de ejemplo en localStorage
-    saveToLocalStorage(STORAGE_KEYS.TASKS, tasks);
-    saveToLocalStorage(STORAGE_KEYS.NOTES, notes);
-    saveToLocalStorage(STORAGE_KEYS.TEAM_MEMBERS, teamMembers);
+function saveLocal(key, data) {
+    localStorage.setItem(key, JSON.stringify(data));
 }
 
-// Función para cambiar entre tabs
+async function saveFirebase(collection, item) {
+    if (!isOnline) return;
+    try {
+        await db.collection(collection).doc(item.id.toString()).set(item);
+    } catch (error) {
+        console.error('Error guardando:', error);
+    }
+}
+
+async function deleteFirebase(collection, id) {
+    if (!isOnline) return;
+    try {
+        await db.collection(collection).doc(id.toString()).delete();
+    } catch (error) {
+        console.error('Error eliminando:', error);
+    }
+}
+
+// ===========================================
+// INTERFAZ DE USUARIO
+// ===========================================
+
 function openTab(evt, tabName) {
-    var i, tabcontent, tablinks;
-    tabcontent = document.getElementsByClassName("tab-content");
-    for (i = 0; i < tabcontent.length; i++) {
-        tabcontent[i].classList.remove("active");
-    }
-    tablinks = document.getElementsByClassName("tab-button");
-    for (i = 0; i < tablinks.length; i++) {
-        tablinks[i].classList.remove("active");
-    }
-    document.getElementById(tabName).classList.add("active");
-    evt.currentTarget.classList.add("active");
+    // Ocultar todas las pestañas
+    document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    document.querySelectorAll('.tab-button').forEach(btn => {
+        btn.classList.remove('active');
+    });
+
+    // Mostrar pestaña activa
+    document.getElementById(tabName).classList.add('active');
+    evt.currentTarget.classList.add('active');
 }
 
-// Funciones para gestión de tareas
+function updateUI() {
+    const status = document.getElementById('connection-status');
+    const userInfo = document.getElementById('user-info');
+
+    if (status) {
+        status.className = `connection-status ${isOnline ? 'status-online' : 'status-offline'}`;
+        status.innerHTML = isOnline ? 
+            '🟢 Conectado - Datos sincronizados' : 
+            '🔴 Modo local - Solo en este dispositivo';
+    }
+
+    if (userInfo) {
+        userInfo.innerHTML = `
+            👤 <strong>${currentUser.name}</strong>
+            <button class="btn btn-small" onclick="changeName()">✏️ Cambiar</button>
+        `;
+    }
+}
+
+function changeName() {
+    const newName = prompt('Tu nombre:', currentUser.name);
+    if (newName && newName.trim()) {
+        currentUser.name = newName.trim();
+        localStorage.setItem('user_name', currentUser.name);
+        updateUI();
+    }
+}
+
+function setupButtons() {
+    const header = document.querySelector('.header');
+    if (!header || document.getElementById('utility-buttons')) return;
+
+    const utilityDiv = document.createElement('div');
+    utilityDiv.id = 'utility-buttons';
+    utilityDiv.innerHTML = `
+        <div id="connection-status" class="connection-status">🔄 Conectando...</div>
+        <div id="user-info" class="user-info">👤 ${currentUser.name}</div>
+        <div class="share-section">
+            <h4>🔗 Compartir</h4>
+            <button class="btn btn-small" onclick="shareLink()">📋 Copiar enlace</button>
+        </div>
+        <button class="btn btn-small" onclick="showStats()">📊 Estadísticas</button>
+        <button class="btn btn-small" onclick="exportData()">💾 Exportar</button>
+    `;
+    header.appendChild(utilityDiv);
+    updateUI();
+}
+
+// ===========================================
+// TAREAS
+// ===========================================
+
 function addTask() {
     const title = document.getElementById('taskTitle').value;
     const responsible = document.getElementById('taskResponsible').value;
     const supplies = document.getElementById('taskSupplies').value;
 
-    if (title.trim() === '') {
-        alert('Por favor ingresa un título para la tarea');
+    if (!title.trim()) {
+        alert('Ingresa un título para la tarea');
         return;
     }
 
     const task = {
         id: Date.now(),
-        title: title,
-        responsible: responsible || 'Sin asignar',
-        supplies: supplies || 'No especificado',
+        title: title.trim(),
+        responsible: responsible.trim() || 'Sin asignar',
+        supplies: supplies.trim() || 'No especificado',
         completed: false,
-        createdAt: new Date().toLocaleDateString()
+        createdAt: new Date().toLocaleDateString(),
+        createdBy: currentUser.name
     };
 
-    tasks.push(task);
-    saveToLocalStorage(STORAGE_KEYS.TASKS, tasks);
-    renderTasks();
+    if (isOnline) {
+        saveFirebase('tasks', task);
+    } else {
+        tasks.push(task);
+        saveLocal('tasks', tasks);
+        renderTasks();
+    }
 
     // Limpiar campos
     document.getElementById('taskTitle').value = '';
@@ -135,91 +227,89 @@ function renderTasks() {
 
     taskList.innerHTML = '';
 
-    // Agregar botón para limpiar todas las tareas
-    if (tasks.length > 0) {
-        const clearButton = document.createElement('div');
-        clearButton.style.marginBottom = '20px';
-        clearButton.innerHTML = `
-            <button class="btn btn-small btn-danger" onclick="clearAllTasks()" style="float: right;">
-                🗑️ Limpiar todas las tareas
-            </button>
-            <div style="clear: both;"></div>
-        `;
-        taskList.appendChild(clearButton);
+    if (tasks.length === 0) {
+        taskList.innerHTML = '<p style="text-align: center; color: #666; margin: 40px 0;">No hay tareas todavía. ¡Agrega la primera!</p>';
+        return;
     }
 
     tasks.forEach(task => {
-        const taskElement = document.createElement('div');
-        taskElement.className = `task-item ${task.completed ? 'completed' : ''}`;
-
-        taskElement.innerHTML = `
+        const taskDiv = document.createElement('div');
+        taskDiv.className = `task-item ${task.completed ? 'completed' : ''}`;
+        taskDiv.innerHTML = `
             <div class="task-info">
                 <div class="task-title">${task.title}</div>
                 <div class="task-details">
-                    👤 Responsable: ${task.responsible} | 
-                    📦 Insumos: ${task.supplies} | 
-                    📅 Creado: ${task.createdAt}
+                    👤 ${task.responsible} | 📦 ${task.supplies} | 📅 ${task.createdAt}
+                    ${task.createdBy ? ` | 👤 Por: ${task.createdBy}` : ''}
                 </div>
             </div>
             <div class="task-actions">
-                <button class="btn btn-small btn-success" onclick="toggleTask(${task.id})">
+                <button class="btn btn-small btn-success" onclick="toggleTask('${task.id}')">
                     ${task.completed ? '↩️ Reabrir' : '✅ Completar'}
                 </button>
-                <button class="btn btn-small btn-danger" onclick="deleteTask(${task.id})">🗑️ Eliminar</button>
+                <button class="btn btn-small btn-danger" onclick="deleteTask('${task.id}')">🗑️</button>
             </div>
         `;
-
-        taskList.appendChild(taskElement);
+        taskList.appendChild(taskDiv);
     });
 }
 
 function toggleTask(id) {
-    const task = tasks.find(t => t.id === id);
-    if (task) {
-        task.completed = !task.completed;
-        saveToLocalStorage(STORAGE_KEYS.TASKS, tasks);
+    const task = tasks.find(t => t.id == id);
+    if (!task) return;
+
+    task.completed = !task.completed;
+    task.modifiedBy = currentUser.name;
+
+    if (isOnline) {
+        saveFirebase('tasks', task);
+    } else {
+        saveLocal('tasks', tasks);
         renderTasks();
     }
 }
 
 function deleteTask(id) {
-    if (confirm('¿Estás seguro de que quieres eliminar esta tarea?')) {
-        tasks = tasks.filter(t => t.id !== id);
-        saveToLocalStorage(STORAGE_KEYS.TASKS, tasks);
+    if (!confirm('¿Eliminar esta tarea?')) return;
+
+    if (isOnline) {
+        deleteFirebase('tasks', id);
+    } else {
+        tasks = tasks.filter(t => t.id != id);
+        saveLocal('tasks', tasks);
         renderTasks();
     }
 }
 
-function clearAllTasks() {
-    if (confirm('¿Estás seguro de que quieres eliminar TODAS las tareas?')) {
-        tasks = [];
-        saveToLocalStorage(STORAGE_KEYS.TASKS, tasks);
-        renderTasks();
-    }
-}
+// ===========================================
+// NOTAS
+// ===========================================
 
-// Funciones para gestión de notas
 function addNote() {
     const title = document.getElementById('noteTitle').value;
     const content = document.getElementById('noteContent').value;
 
-    if (title.trim() === '' || content.trim() === '') {
-        alert('Por favor completa el título y contenido de la nota');
+    if (!title.trim() || !content.trim()) {
+        alert('Completa título y contenido');
         return;
     }
 
     const note = {
         id: Date.now(),
-        title: title,
-        content: content,
-        createdAt: new Date().toLocaleDateString()
+        title: title.trim(),
+        content: content.trim(),
+        createdAt: new Date().toLocaleDateString(),
+        createdBy: currentUser.name
     };
 
-    notes.push(note);
-    saveToLocalStorage(STORAGE_KEYS.NOTES, notes);
-    renderNotes();
+    if (isOnline) {
+        saveFirebase('notes', note);
+    } else {
+        notes.push(note);
+        saveLocal('notes', notes);
+        renderNotes();
+    }
 
-    // Limpiar campos
     document.getElementById('noteTitle').value = '';
     document.getElementById('noteContent').value = '';
 }
@@ -230,71 +320,67 @@ function renderNotes() {
 
     notesList.innerHTML = '';
 
-    // Agregar botón para limpiar todas las notas
-    if (notes.length > 0) {
-        const clearButton = document.createElement('div');
-        clearButton.style.marginBottom = '20px';
-        clearButton.innerHTML = `
-            <button class="btn btn-small btn-danger" onclick="clearAllNotes()">
-                🗑️ Limpiar todas las notas
-            </button>
-        `;
-        notesList.appendChild(clearButton);
+    if (notes.length === 0) {
+        notesList.innerHTML = '<p style="text-align: center; color: #666; margin: 40px 0;">No hay notas todavía. ¡Agrega la primera!</p>';
+        return;
     }
 
     notes.forEach(note => {
-        const noteElement = document.createElement('div');
-        noteElement.className = 'note-item';
-
-        noteElement.innerHTML = `
+        const noteDiv = document.createElement('div');
+        noteDiv.className = 'note-item';
+        noteDiv.innerHTML = `
             <div class="note-title">${note.title}</div>
             <div class="note-content">${note.content}</div>
             <div style="margin-top: 10px; font-size: 0.8rem; color: #856404;">
-                📅 ${note.createdAt}
-                <button class="btn btn-small btn-danger" style="float: right;" onclick="deleteNote(${note.id})">🗑️</button>
+                📅 ${note.createdAt} ${note.createdBy ? `| 👤 ${note.createdBy}` : ''}
+                <button class="btn btn-small btn-danger" style="float: right;" onclick="deleteNote('${note.id}')">🗑️</button>
             </div>
         `;
-
-        notesList.appendChild(noteElement);
+        notesList.appendChild(noteDiv);
     });
 }
 
 function deleteNote(id) {
-    if (confirm('¿Estás seguro de que quieres eliminar esta nota?')) {
-        notes = notes.filter(n => n.id !== id);
-        saveToLocalStorage(STORAGE_KEYS.NOTES, notes);
+    if (!confirm('¿Eliminar esta nota?')) return;
+
+    if (isOnline) {
+        deleteFirebase('notes', id);
+    } else {
+        notes = notes.filter(n => n.id != id);
+        saveLocal('notes', notes);
         renderNotes();
     }
 }
 
-function clearAllNotes() {
-    if (confirm('¿Estás seguro de que quieres eliminar TODAS las notas?')) {
-        notes = [];
-        saveToLocalStorage(STORAGE_KEYS.NOTES, notes);
-        renderNotes();
-    }
-}
+// ===========================================
+// IMÁGENES
+// ===========================================
 
-// Funciones para gestión de imágenes
 function handleImageUpload(event) {
     const files = event.target.files;
 
     for (let file of files) {
-        if (file.type.startsWith('image/')) {
-            const reader = new FileReader();
-            reader.onload = function (e) {
-                const image = {
-                    id: Date.now() + Math.random(),
-                    name: file.name,
-                    src: e.target.result,
-                    uploadedAt: new Date().toLocaleDateString()
-                };
-                images.push(image);
-                saveToLocalStorage(STORAGE_KEYS.IMAGES, images);
-                renderImages();
+        if (!file.type.startsWith('image/')) continue;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const image = {
+                id: Date.now() + Math.random(),
+                name: file.name,
+                src: e.target.result,
+                uploadedAt: new Date().toLocaleDateString(),
+                uploadedBy: currentUser.name
             };
-            reader.readAsDataURL(file);
-        }
+
+            if (isOnline) {
+                saveFirebase('images', image);
+            } else {
+                images.push(image);
+                saveLocal('images', images);
+                renderImages();
+            }
+        };
+        reader.readAsDataURL(file);
     }
 }
 
@@ -304,248 +390,189 @@ function renderImages() {
 
     gallery.innerHTML = '';
 
-    // Agregar botón para limpiar todas las imágenes
-    if (images.length > 0) {
-        const clearButton = document.createElement('div');
-        clearButton.style.marginBottom = '20px';
-        clearButton.innerHTML = `
-            <button class="btn btn-small btn-danger" onclick="clearAllImages()">
-                🗑️ Limpiar todas las imágenes
-            </button>
-        `;
-        gallery.appendChild(clearButton);
+    if (images.length === 0) {
+        gallery.innerHTML = '<p style="text-align: center; color: #666; margin: 40px 0;">No hay imágenes todavía. ¡Sube la primera!</p>';
+        return;
     }
 
     images.forEach(image => {
-        const imageElement = document.createElement('div');
-        imageElement.className = 'image-item';
-
-        imageElement.innerHTML = `
+        const imageDiv = document.createElement('div');
+        imageDiv.className = 'image-item';
+        imageDiv.innerHTML = `
             <img src="${image.src}" alt="${image.name}">
             <div class="image-overlay">
-                <button class="btn btn-small btn-danger" onclick="deleteImage('${image.id}')">🗑️ Eliminar</button>
+                <small>${image.uploadedBy ? `Por: ${image.uploadedBy}` : ''}</small>
+                <button class="btn btn-small btn-danger" onclick="deleteImage('${image.id}')">🗑️</button>
             </div>
         `;
-
-        gallery.appendChild(imageElement);
+        gallery.appendChild(imageDiv);
     });
 }
 
 function deleteImage(id) {
-    if (confirm('¿Estás seguro de que quieres eliminar esta imagen?')) {
+    if (!confirm('¿Eliminar esta imagen?')) return;
+
+    if (isOnline) {
+        deleteFirebase('images', id);
+    } else {
         images = images.filter(img => img.id != id);
-        saveToLocalStorage(STORAGE_KEYS.IMAGES, images);
+        saveLocal('images', images);
         renderImages();
     }
 }
 
-function clearAllImages() {
-    if (confirm('¿Estás seguro de que quieres eliminar TODAS las imágenes?')) {
-        images = [];
-        saveToLocalStorage(STORAGE_KEYS.IMAGES, images);
-        renderImages();
-    }
-}
+// ===========================================
+// EQUIPO DE COCINA
+// ===========================================
 
-// Funciones para gestión del equipo de cocina
 function addTeamMember() {
     const name = document.getElementById('memberName').value;
     const role = document.getElementById('memberRole').value;
 
-    if (name.trim() === '' || role.trim() === '') {
-        alert('Por favor completa el nombre y rol del miembro');
+    if (!name.trim() || !role.trim()) {
+        alert('Completa nombre y rol');
         return;
     }
 
     const member = {
         id: Date.now(),
-        name: name,
-        role: role,
+        name: name.trim(),
+        role: role.trim(),
         status: 'pending',
-        addedAt: new Date().toLocaleDateString()
+        addedAt: new Date().toLocaleDateString(),
+        addedBy: currentUser.name
     };
 
-    teamMembers.push(member);
-    saveToLocalStorage(STORAGE_KEYS.TEAM_MEMBERS, teamMembers);
-    renderTeamMembers();
+    if (isOnline) {
+        saveFirebase('team', member);
+    } else {
+        teamMembers.push(member);
+        saveLocal('team', teamMembers);
+        renderTeam();
+    }
 
-    // Limpiar campos
     document.getElementById('memberName').value = '';
     document.getElementById('memberRole').value = '';
 }
 
-function renderTeamMembers() {
+function renderTeam() {
     const teamGrid = document.getElementById('teamGrid');
     if (!teamGrid) return;
 
     teamGrid.innerHTML = '';
 
-    // Agregar botón para limpiar todo el equipo
-    if (teamMembers.length > 0) {
-        const clearButton = document.createElement('div');
-        clearButton.style.marginBottom = '20px';
-        clearButton.innerHTML = `
-            <button class="btn btn-small btn-danger" onclick="clearAllTeamMembers()">
-                🗑️ Limpiar todo el equipo
-            </button>
-        `;
-        teamGrid.appendChild(clearButton);
+    if (teamMembers.length === 0) {
+        teamGrid.innerHTML = '<p style="text-align: center; color: #666; margin: 40px 0; grid-column: 1/-1;">No hay miembros todavía. ¡Agrega el primero!</p>';
+        return;
     }
 
     teamMembers.forEach(member => {
-        const memberElement = document.createElement('div');
-        memberElement.className = 'team-member';
-
-        const initial = member.name.charAt(0).toUpperCase();
-
-        memberElement.innerHTML = `
-            <div class="member-avatar">${initial}</div>
+        const memberDiv = document.createElement('div');
+        memberDiv.className = 'team-member';
+        memberDiv.innerHTML = `
+            <div class="member-avatar">${member.name.charAt(0).toUpperCase()}</div>
             <div class="member-name">${member.name}</div>
             <div class="member-role">${member.role}</div>
             <div class="member-status status-${member.status}">
                 ${member.status === 'confirmed' ? '✅ Confirmado' : '⏳ Pendiente'}
             </div>
+            <div style="margin-top: 10px; font-size: 0.8rem; text-align: center;">
+                <small>${member.addedBy ? `Por: ${member.addedBy}` : ''}</small>
+            </div>
             <div style="margin-top: 15px;">
-                <button class="btn btn-small btn-success" onclick="confirmMember(${member.id})">
-                    ${member.status === 'confirmed' ? '↩️ Desconfirmar' : '✅ Confirmar'}
+                <button class="btn btn-small btn-success" onclick="confirmMember('${member.id}')">
+                    ${member.status === 'confirmed' ? '↩️ Pendiente' : '✅ Confirmar'}
                 </button>
-                <button class="btn btn-small btn-danger" onclick="deleteMember(${member.id})">🗑️</button>
+                <button class="btn btn-small btn-danger" onclick="deleteMember('${member.id}')">🗑️</button>
             </div>
         `;
-
-        teamGrid.appendChild(memberElement);
+        teamGrid.appendChild(memberDiv);
     });
 }
 
 function confirmMember(id) {
-    const member = teamMembers.find(m => m.id === id);
-    if (member) {
-        member.status = member.status === 'confirmed' ? 'pending' : 'confirmed';
-        saveToLocalStorage(STORAGE_KEYS.TEAM_MEMBERS, teamMembers);
-        renderTeamMembers();
+    const member = teamMembers.find(m => m.id == id);
+    if (!member) return;
+
+    member.status = member.status === 'confirmed' ? 'pending' : 'confirmed';
+    member.modifiedBy = currentUser.name;
+
+    if (isOnline) {
+        saveFirebase('team', member);
+    } else {
+        saveLocal('team', teamMembers);
+        renderTeam();
     }
 }
 
 function deleteMember(id) {
-    if (confirm('¿Estás seguro de que quieres eliminar este miembro del equipo?')) {
-        teamMembers = teamMembers.filter(m => m.id !== id);
-        saveToLocalStorage(STORAGE_KEYS.TEAM_MEMBERS, teamMembers);
-        renderTeamMembers();
+    if (!confirm('¿Eliminar este miembro?')) return;
+
+    if (isOnline) {
+        deleteFirebase('team', id);
+    } else {
+        teamMembers = teamMembers.filter(m => m.id != id);
+        saveLocal('team', teamMembers);
+        renderTeam();
     }
 }
 
-function clearAllTeamMembers() {
-    if (confirm('¿Estás seguro de que quieres eliminar TODO el equipo?')) {
-        teamMembers = [];
-        saveToLocalStorage(STORAGE_KEYS.TEAM_MEMBERS, teamMembers);
-        renderTeamMembers();
-    }
+// ===========================================
+// UTILIDADES
+// ===========================================
+
+function showStats() {
+    const completedTasks = tasks.filter(t => t.completed).length;
+    const confirmedMembers = teamMembers.filter(m => m.status === 'confirmed').length;
+
+    alert(`📊 ESTADÍSTICAS DEL EVENTO
+
+🌐 ${isOnline ? 'EN LÍNEA - Datos compartidos' : 'MODO LOCAL - Solo en este dispositivo'}
+
+📋 TAREAS: ${tasks.length} (${completedTasks} completadas)
+📝 NOTAS: ${notes.length}
+🖼️ IMÁGENES: ${images.length}
+👥 EQUIPO: ${teamMembers.length} (${confirmedMembers} confirmados)
+
+👤 Usuario: ${currentUser.name}
+📅 ${new Date().toLocaleString()}`);
 }
 
-// Funciones de utilidad para exportar/importar datos
 function exportData() {
     const data = {
-        tasks: tasks,
-        notes: notes,
-        teamMembers: teamMembers,
-        exportDate: new Date().toISOString()
+        tasks,
+        notes,
+        teamMembers,
+        images: images.map(img => ({...img, src: 'imagen-exportada'})), // No exportar base64
+        exportDate: new Date().toISOString(),
+        exportedBy: currentUser.name
     };
 
-    const dataStr = JSON.stringify(data, null, 2);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
-
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
     const link = document.createElement('a');
-    link.href = URL.createObjectURL(dataBlob);
-    link.download = `evento_especial_backup_${new Date().toISOString().split('T')[0]}.json`;
+    link.href = URL.createObjectURL(blob);
+    link.download = `evento-backup-${new Date().toISOString().split('T')[0]}.json`;
     link.click();
 }
 
-function importData(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = function (e) {
-        try {
-            const data = JSON.parse(e.target.result);
-
-            if (confirm('¿Estás seguro de que quieres importar estos datos? Esto reemplazará todos los datos actuales.')) {
-                tasks = data.tasks || [];
-                notes = data.notes || [];
-                teamMembers = data.teamMembers || [];
-
-                // Guardar en localStorage
-                saveToLocalStorage(STORAGE_KEYS.TASKS, tasks);
-                saveToLocalStorage(STORAGE_KEYS.NOTES, notes);
-                saveToLocalStorage(STORAGE_KEYS.TEAM_MEMBERS, teamMembers);
-
-                // Renderizar todo
-                renderTasks();
-                renderNotes();
-                renderImages();
-                renderTeamMembers();
-
-                alert('Datos importados exitosamente!');
-            }
-        } catch (error) {
-            alert('Error al importar los datos. Asegúrate de que el archivo sea válido.');
-        }
-    };
-    reader.readAsText(file);
-}
-
-// Función para mostrar estadísticas
-function showStats() {
-    const completedTasks = tasks.filter(t => t.completed).length;
-    const pendingTasks = tasks.length - completedTasks;
-    const confirmedMembers = teamMembers.filter(m => m.status === 'confirmed').length;
-    const pendingMembers = teamMembers.length - confirmedMembers;
-
-    const stats = `
-📊 ESTADÍSTICAS DEL EVENTO ESPECIAL - DÍA 28
-
-📋 TAREAS:
-• Total: ${tasks.length}
-• Completadas: ${completedTasks}
-• Pendientes: ${pendingTasks}
-
-📝 NOTAS: ${notes.length}
-
-🖼️ IMÁGENES: ${images.length}
-
-👥 EQUIPO DE COCINA:
-• Total miembros: ${teamMembers.length}
-• Confirmados: ${confirmedMembers}
-• Pendientes: ${pendingMembers}
-
-📅 Última actualización: ${new Date().toLocaleString()}
-    `;
-
-    alert(stats);
-}
-
-// Inicializar la aplicación cuando se carga la página
-window.onload = function () {
-    initializeData();
-
-    // Agregar botones de utilidad si no existen
-    addUtilityButtons();
-};
-
-function addUtilityButtons() {
-    // Agregar botones de utilidad al header si no existen
-    const header = document.querySelector('.header');
-    if (header && !document.getElementById('utility-buttons')) {
-        const utilityDiv = document.createElement('div');
-        utilityDiv.id = 'utility-buttons';
-        utilityDiv.style.marginTop = '20px';
-        utilityDiv.innerHTML = `
-            <button class="btn btn-small" onclick="showStats()" style="margin: 5px;">📊 Estadísticas</button>
-            <button class="btn btn-small" onclick="exportData()" style="margin: 5px;">💾 Exportar Datos</button>
-            <label for="importInput" class="btn btn-small" style="margin: 5px; cursor: pointer;">📁 Importar Datos</label>
-            <input type="file" id="importInput" accept=".json" onchange="importData(event)" style="display: none;">
-            <button class="btn btn-small btn-danger" onclick="clearAllLocalStorage()" style="margin: 5px;">🗑️ Limpiar Todo</button>
-        `;
-        header.appendChild(utilityDiv);
+function shareLink() {
+    const link = window.location.href;
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(link).then(() => {
+            alert('¡Link copiado! Compártelo con tu equipo.');
+        });
+    } else {
+        prompt('Copia este link:', link);
     }
+}
+
+// ===========================================
+// INICIO
+// ===========================================
+
+// Inicializar cuando esté listo
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initApp);
+} else {
+    initApp();
 }
