@@ -57,28 +57,28 @@ function setupFirebaseListeners() {
     // Tareas
     db.collection('tasks').onSnapshot(snapshot => {
         tasks = [];
-        snapshot.forEach(doc => tasks.push({id: doc.id, ...doc.data()}));
+        snapshot.forEach(doc => tasks.push({ id: doc.id, ...doc.data() }));
         renderTasks();
     });
 
     // Notas
     db.collection('notes').onSnapshot(snapshot => {
         notes = [];
-        snapshot.forEach(doc => notes.push({id: doc.id, ...doc.data()}));
+        snapshot.forEach(doc => notes.push({ id: doc.id, ...doc.data() }));
         renderNotes();
     });
 
     // Equipo
     db.collection('team').onSnapshot(snapshot => {
         teamMembers = [];
-        snapshot.forEach(doc => teamMembers.push({id: doc.id, ...doc.data()}));
+        snapshot.forEach(doc => teamMembers.push({ id: doc.id, ...doc.data() }));
         renderTeam();
     });
 
     // Imágenes
     db.collection('images').onSnapshot(snapshot => {
         images = [];
-        snapshot.forEach(doc => images.push({id: doc.id, ...doc.data()}));
+        snapshot.forEach(doc => images.push({ id: doc.id, ...doc.data() }));
         renderImages();
     });
 }
@@ -88,7 +88,7 @@ function loadLocalData() {
     notes = JSON.parse(localStorage.getItem('notes') || '[]');
     teamMembers = JSON.parse(localStorage.getItem('team') || '[]');
     images = JSON.parse(localStorage.getItem('images') || '[]');
-    
+
     renderTasks();
     renderNotes();
     renderTeam();
@@ -141,8 +141,8 @@ function updateUI() {
 
     if (status) {
         status.className = `connection-status ${isOnline ? 'status-online' : 'status-offline'}`;
-        status.innerHTML = isOnline ? 
-            '🟢 Conectado - Datos sincronizados' : 
+        status.innerHTML = isOnline ?
+            '🟢 Conectado - Datos sincronizados' :
             '🔴 Modo local - Solo en este dispositivo';
     }
 
@@ -172,12 +172,7 @@ function setupButtons() {
     utilityDiv.innerHTML = `
         <div id="connection-status" class="connection-status">🔄 Conectando...</div>
         <div id="user-info" class="user-info">👤 ${currentUser.name}</div>
-        <div class="share-section">
-            <h4>🔗 Compartir</h4>
-            <button class="btn btn-small" onclick="shareLink()">📋 Copiar enlace</button>
-        </div>
         <button class="btn btn-small" onclick="showStats()">📊 Estadísticas</button>
-        <button class="btn btn-small" onclick="exportData()">💾 Exportar</button>
     `;
     header.appendChild(utilityDiv);
     updateUI();
@@ -363,7 +358,7 @@ function handleImageUpload(event) {
         if (!file.type.startsWith('image/')) continue;
 
         const reader = new FileReader();
-        reader.onload = function(e) {
+        reader.onload = function (e) {
             const image = {
                 id: Date.now() + Math.random(),
                 name: file.name,
@@ -543,12 +538,12 @@ function exportData() {
         tasks,
         notes,
         teamMembers,
-        images: images.map(img => ({...img, src: 'imagen-exportada'})), // No exportar base64
+        images: images.map(img => ({ ...img, src: 'imagen-exportada' })), // No exportar base64
         exportDate: new Date().toISOString(),
         exportedBy: currentUser.name
     };
 
-    const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = `evento-backup-${new Date().toISOString().split('T')[0]}.json`;
